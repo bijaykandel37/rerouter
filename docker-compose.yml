@@ -1,0 +1,27 @@
+services:
+  rerouter:
+    build: .
+    image: rerouter:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"       # web UI + API
+      - "2055:2055/udp"   # NetFlow v5/v9 + IPFIX collector
+    volumes:
+      - rerouter-data:/data
+      # - ./rerouter.toml:/etc/rerouter.toml:ro
+    environment:
+      # Start with the built-in simulator; switch to openwrt/routeros for a real router.
+      REROUTER_ROUTER_DRIVER: simulated
+      # REROUTER_ROUTER_HOST: 192.168.1.1
+      # REROUTER_ROUTER_USERNAME: root
+      # REROUTER_ROUTER_PASSWORD: change-me
+      # REROUTER_CONFIG: /etc/rerouter.toml
+      # REROUTER_ADMIN_PASSWORD: choose-a-long-password
+
+    # Packet capture (REROUTER_CAPTURE_INTERFACE) needs the host network and raw sockets:
+    # network_mode: host
+    # cap_add: [NET_RAW, NET_ADMIN]
+    # user: root
+
+volumes:
+  rerouter-data:

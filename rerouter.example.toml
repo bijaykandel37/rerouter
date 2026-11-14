@@ -1,0 +1,39 @@
+# Copy to rerouter.toml and point REROUTER_CONFIG at it.
+# Every key can also be set as an environment variable: REROUTER_<KEY>, and
+# REROUTER_ROUTER_<KEY> for the [router] table (e.g. REROUTER_ROUTER_HOST).
+
+data_dir = "./data"
+http_host = "0.0.0.0"
+http_port = 8080
+poll_interval = 5.0            # seconds between interface counter polls
+device_refresh_interval = 60.0 # seconds between DHCP/ARP inventory refreshes
+
+netflow_enabled = true
+netflow_bind = "0.0.0.0"
+netflow_port = 2055
+
+# Sniff a local interface (Linux, needs CAP_NET_RAW). Use when rerouter runs on
+# the router itself, in-line, or on a switch mirror/SPAN port. Also learns
+# hostnames from DNS answers.
+# capture_interface = "eth1"
+
+# admin_password = "set-on-first-start"  # otherwise one is generated and logged
+cookie_secure = false                     # set true when served over HTTPS
+session_ttl_hours = 12
+
+[router]
+driver = "openwrt"     # simulated | openwrt | routeros
+host = "192.168.1.1"
+username = "root"
+# password = "..."
+key_file = "~/.ssh/id_ed25519"   # OpenWrt: SSH key auth recommended
+# known_hosts = "~/.ssh/known_hosts"  # enables SSH host-key verification
+timeout = 10.0
+
+# RouterOS (REST API, v7+):
+# driver = "routeros"
+# host = "192.168.88.1"
+# username = "rerouter"
+# password = "..."
+# use_https = true
+# verify_tls = false   # true once the router has a trusted certificate
