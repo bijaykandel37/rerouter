@@ -23,7 +23,9 @@ RANGES = {"5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "24h": 86400, "7d": 60
 NICE_BUCKETS = [10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
 GROUPABLE = {"direction": "direction", "app": "app", "local_ip": "local_ip",
              "remote_ip": "remote_ip", "proto": "proto", "remote_port": "remote_port",
-             "local_port": "local_port", "source": "source"}
+             "local_port": "local_port", "source": "source", "host": "host",
+             "fingerprint": "fingerprint", "tls_version": "tls_version"}
+NULLABLE_COLUMNS = {"host", "fingerprint", "tls_version"}
 
 
 @dataclass
@@ -38,6 +40,9 @@ class Query:
     proto: int | None = None
     port: int | None = None  # either side
     source: str | None = None
+    host: str | None = None
+    fingerprint: str | None = None
+    tls_version: str | None = None
     exclude_lan: bool = False
     extra: list[tuple[str, tuple]] = field(default_factory=list)
 
@@ -54,7 +59,8 @@ class Query:
     def where(self) -> tuple[str, list]:
         clauses = ["ts_end >= ?", "ts_end < ?"]
         params: list = [self.start, self.end]
-        for col in ("local_ip", "remote_ip", "app", "direction", "proto", "source"):
+        for col in ("local_ip", "remote_ip", "app", "direction", "proto", "source",
+                    "host", "fingerprint", "tls_version"):
             value = getattr(self, col)
             if value is not None:
                 clauses.append(f"{col} = ?")
@@ -140,6 +146,8 @@ def timeseries(db: Database, q: Query, group_by: str = "direction", metric: str 
         raise ValueError(f"unknown metric {metric!r}")
     bucket = bucket or pick_bucket(q.end - q.start)
     where, params = q.where()
+    if group_by in NULLABLE_COLUMNS:
+        where += f" AND {col} IS NOT NULL"
 
     keys = [r["k"] for r in db.query(
         f"SELECT {col} AS k, {agg} AS v FROM flows WHERE {where} GROUP BY k "
@@ -191,6 +199,8 @@ def top(db: Database, q: Query, by: str = "remote_ip", limit: int = 20) -> list[
     else:
         raise ValueError(f"cannot rank by {by!r}")
     where, params = q.where()
+    if by in NULLABLE_COLUMNS:
+        where += f" AND {GROUPABLE[by]} IS NOT NULL"
     rows = db.query(
         f"SELECT {cols}, SUM(bytes) AS bytes, SUM(packets) AS packets, COUNT(*) AS flows, "
         f"{DIRECTION_SUMS}, MIN(ts_start) AS first_seen, MAX(ts_end) AS last_seen, "
@@ -343,7 +353,8 @@ def _size_label(b: int) -> str:
 
 FLOW_COLUMNS = ["id", "ts_start", "ts_end", "src_ip", "dst_ip", "src_port", "dst_port",
                 "proto", "bytes", "packets", "tcp_flags", "direction", "local_ip",
-                "remote_ip", "local_port", "remote_port", "app", "source", "exporter"]
+                "remote_ip", "local_port", "remote_port", "app", "source", "exporter",
+                "host", "fingerprint", "tls_version"]
 SORTABLE = {"ts_end", "bytes", "packets", "ts_start"}
 
 

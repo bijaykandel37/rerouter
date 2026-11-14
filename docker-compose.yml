@@ -17,6 +17,8 @@ services:
       # REROUTER_ROUTER_PASSWORD: change-me
       # REROUTER_CONFIG: /etc/rerouter.toml
       # REROUTER_ADMIN_PASSWORD: choose-a-long-password
+      # Enable the mitmproxy decrypted-HTTP ingest endpoint (docs/mitmproxy.md):
+      # REROUTER_INGEST_TOKEN: a-long-random-secret
 
     # Packet capture (REROUTER_CAPTURE_INTERFACE) needs the host network and raw sockets:
     # network_mode: host

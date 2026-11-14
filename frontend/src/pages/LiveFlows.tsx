@@ -8,6 +8,7 @@ import { useLive, useTopic } from "../hooks";
 interface LiveFlow {
   ts: number; src: string; dst: string; sport: number; dport: number; proto: string; bytes: number; packets: number;
   direction: string; app: string; local: string; remote: string; remote_name: string | null;
+  host: string | null; fingerprint: string | null; tls_version: string | null;
 }
 
 const MAX = 500;
@@ -30,7 +31,7 @@ export default function LiveFlows() {
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return flows.filter((f) => (!hideSmall || f.bytes >= 10_000) && (!q ||
-      [f.src, f.dst, f.app, f.remote_name ?? "", String(f.sport), String(f.dport), f.proto].some((x) => x.toLowerCase().includes(q))));
+      [f.src, f.dst, f.app, f.remote_name ?? "", f.host ?? "", String(f.sport), String(f.dport), f.proto].some((x) => x.toLowerCase().includes(q))));
   }, [flows, filter, hideSmall]);
 
   const ifaces = Object.keys(history.at(-1)?.rates ?? {});
@@ -70,8 +71,8 @@ export default function LiveFlows() {
                   <td className="nowrap" style={{ fontVariantNumeric: "tabular-nums" }}>{time(f.ts)}</td>
                   <td title={f.direction}>{ARROW[f.direction]}</td>
                   <td className="mono small nowrap">{f.src}:{f.sport}</td>
-                  <td className="mono small nowrap">{f.dst}:{f.dport}{f.remote_name && f.remote === f.dst ? <span className="muted"> {f.remote_name}</span> : null}</td>
-                  <td>{f.app}</td>
+                  <td className="mono small nowrap">{f.dst}:{f.dport}{(f.host || f.remote_name) ? <span className="muted"> {f.host || f.remote_name}</span> : null}</td>
+                  <td>{f.app}{f.tls_version ? <span className="muted small"> · {f.tls_version}</span> : null}</td>
                   <td>{f.proto}</td>
                   <td className="num">{bytes(f.bytes)}</td>
                   <td className="num">{f.packets}</td>

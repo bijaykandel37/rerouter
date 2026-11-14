@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Traffic from "./pages/Traffic";
 import LiveFlows from "./pages/LiveFlows";
+import DecryptedHttp from "./pages/DecryptedHttp";
 import Devices from "./pages/Devices";
 import Interfaces from "./pages/Interfaces";
 import Network from "./pages/Network";
@@ -17,6 +18,7 @@ const NAV: { path: string; label: string; icon: string; section?: string }[] = [
   { path: "/", label: "Dashboard", icon: "M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z", section: "Monitor" },
   { path: "/traffic", label: "Traffic explorer", icon: "M3 17l6-6 4 4 8-8M15 7h6v6" },
   { path: "/live", label: "Live flows", icon: "M2 12h4l3-8 4 16 3-8h6" },
+  { path: "/http", label: "Decrypted HTTP", icon: "M4 6h16M4 6a0 0 0 000 0v12h16V6M9 10l-2 2 2 2M15 10l2 2-2 2" },
   { path: "/devices", label: "Devices", icon: "M4 5h16v10H4zM8 19h8M12 15v4" },
   { path: "/alerts", label: "Alerts", icon: "M12 3l9 16H3zM12 10v4M12 17h.01" },
   { path: "/interfaces", label: "Interfaces", icon: "M4 9h16v6H4zM8 12h.01M12 12h.01", section: "Configure" },
@@ -68,6 +70,7 @@ function Shell({ user, onLogout }: { user: string; onLogout: () => void }) {
     "/": <Dashboard status={status.data} />,
     "/traffic": <Traffic />,
     "/live": <LiveFlows />,
+    "/http": <DecryptedHttp />,
     "/devices": <Devices />,
     "/alerts": <Alerts onChange={status.reload} />,
     "/interfaces": <Interfaces />,

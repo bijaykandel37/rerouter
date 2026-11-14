@@ -10,7 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import auth_routes, platform_routes, router_routes, traffic_routes
+from .api import (auth_routes, http_routes, platform_routes, router_routes,
+                  traffic_routes)
 from .config import Config, load_config
 from .core import Platform
 from .drivers import RouterDriver
@@ -46,7 +47,7 @@ def create_app(cfg: Config | None = None, driver: RouterDriver | None = None,
         response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
 
-    for module in (auth_routes, traffic_routes, router_routes, platform_routes):
+    for module in (auth_routes, traffic_routes, http_routes, router_routes, platform_routes):
         app.include_router(module.router)
 
     @app.get("/api/health", include_in_schema=False)

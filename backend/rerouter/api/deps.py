@@ -71,10 +71,13 @@ def traffic_query(
     app: str | None = None,
     direction: str | None = Q(None, pattern=r"^(upload|download|lan|transit)$"),
     proto: int | None = Q(None, ge=0, le=255), port: int | None = Q(None, ge=0, le=65535),
-    source: str | None = None, exclude_lan: bool = False,
+    source: str | None = None, host: str | None = None, fingerprint: str | None = None,
+    tls_version: str | None = None, exclude_lan: bool = False,
 ) -> Query:
     if start is not None and end is not None and end <= start:
         raise HTTPException(422, "end must be after start")
     return Query.from_params(range_=range, start=start, end=end, local_ip=local_ip,
                              remote_ip=remote_ip, ip=ip, app=app, direction=direction,
-                             proto=proto, port=port, source=source, exclude_lan=exclude_lan)
+                             proto=proto, port=port, source=source, host=host,
+                             fingerprint=fingerprint, tls_version=tls_version,
+                             exclude_lan=exclude_lan)

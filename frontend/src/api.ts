@@ -68,8 +68,9 @@ export interface Status {
   collectors: {
     netflow: { listening: boolean; bind: string; port: number; error: string | null;
       exporters: Record<string, { packets: number; flows: number; last_seen: number }>; parser: Record<string, number> } | null;
-    capture: { interface: string; packets: number; active_flows: number; error: string | null; running: boolean } | null;
+    capture: { interface: string; packets: number; active_flows: number; l7_observed: number; error: string | null; running: boolean } | null;
     sink: { received: number; stored: number; dropped: number; last_flush: number; by_source: Record<string, number> };
+    http_ingest: { enabled: boolean; received: number; last_ts: number };
   };
   counts: { devices: number; open_alerts: number; flows_last_hour: number };
   system: SystemInfo | null; rates: Record<string, Rate>; router_ips: string[];
@@ -91,6 +92,13 @@ export interface Flow {
   proto: number; proto_name: string; bytes: number; packets: number; tcp_flags: number; direction: string;
   local_ip: string; remote_ip: string; local_port: number; remote_port: number; app: string; source: string;
   local_name: string | null; remote_name: string | null;
+  host: string | null; fingerprint: string | null; tls_version: string | null;
+}
+export interface HttpTxn {
+  id: number; ts: number; client_ip: string | null; client_port: number | null; method: string | null;
+  scheme: string | null; host: string | null; path: string | null; status: number | null;
+  req_type: string | null; req_bytes: number | null; resp_type: string | null; resp_bytes: number | null;
+  duration_ms: number | null; note: string | null; source: string; client_name: string | null;
 }
 export interface Device {
   mac: string; ip: string | null; hostname: string | null; alias: string | null; vendor: string | null;
@@ -120,7 +128,7 @@ export interface CommandResult { ok: boolean; output: string }
 export interface AuditEntry { id: number; ts: number; username: string | null; action: string; details: Record<string, unknown>; ok: boolean }
 export interface RuntimeSettings {
   lan_networks: string[]; router_ips: string[]; flow_retention_days: number; sample_retention_days: number;
-  reverse_dns: boolean;
+  http_retention_days: number; reverse_dns: boolean;
   alerts: { spike_sigma: number; spike_min_bytes: number; scan_targets: number; upload_bytes_10m: number;
     risky_ports: number[]; new_device: boolean; interface_errors: number };
 }

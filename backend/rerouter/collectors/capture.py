@@ -14,6 +14,7 @@ import struct
 import threading
 import time
 
+from .dpi import inspect_tcp_payload
 from .flowstore import FlowRecord, FlowSink
 
 log = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 ETH_P_ALL = 0x0003
 ACTIVE_TIMEOUT = 30.0
 IDLE_TIMEOUT = 15.0
+L7_MAX_TRIES = 5  # give up L7 inspection after this many data packets per flow
 
 
 def parse_packet(frame: bytes) -> tuple | None:
@@ -119,26 +121,32 @@ def parse_dns_answers(msg: bytes) -> dict[str, str]:
 
 
 class FlowTable:
+    # entry layout: [start, end, bytes, packets, flags, meta]
     def __init__(self) -> None:
         self.flows: dict[tuple, list] = {}
 
-    def add(self, key: tuple, size: int, flags: int, now: float) -> None:
+    def add(self, key: tuple, size: int, flags: int, now: float) -> list:
         f = self.flows.get(key)
         if f is None:
-            self.flows[key] = [now, now, size, 1, flags]
+            f = [now, now, size, 1, flags, {}]
+            self.flows[key] = f
         else:
             f[1] = now
             f[2] += size
             f[3] += 1
             f[4] |= flags
+        return f
 
     def expire(self, now: float, force: bool = False) -> list[FlowRecord]:
         out = []
         for key, f in list(self.flows.items()):
             if force or now - f[1] > IDLE_TIMEOUT or now - f[0] > ACTIVE_TIMEOUT:
                 src, dst, sport, dport, proto = key
+                meta = f[5]
                 out.append(FlowRecord(f[0], f[1], src, dst, sport, dport, proto, f[2], f[3],
-                                      f[4], source="capture"))
+                                      f[4], source="capture", host=meta.get("host"),
+                                      fingerprint=meta.get("fingerprint"),
+                                      tls_version=meta.get("tls_version")))
                 del self.flows[key]
         return out
 
@@ -149,6 +157,7 @@ class PacketCapture:
         self.interface = interface
         self.table = FlowTable()
         self.packets = 0
+        self.l7_seen = 0
         self.error: str | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -197,7 +206,7 @@ class PacketCapture:
             return
         src, dst, sport, dport, proto, size, flags, payload = parsed
         self.packets += 1
-        self.table.add((src, dst, sport, dport, proto), size, flags, now)
+        entry = self.table.add((src, dst, sport, dport, proto), size, flags, now)
         if proto == 17 and sport == 53 and payload:
             try:
                 names = parse_dns_answers(payload)
@@ -205,9 +214,29 @@ class PacketCapture:
                 return
             if names:
                 self.sink.learn_names(names, "dns")
+        elif proto == 6 and payload:
+            self._inspect(entry, payload, dst)
+
+    def _inspect(self, entry: list, payload: bytes, dst: str) -> None:
+        """Pull SNI / HTTP host / JA3 from the first data packets of a TCP flow."""
+        meta = entry[5]
+        if meta.get("host") or meta.get("tries", 0) >= L7_MAX_TRIES:
+            return
+        meta["tries"] = meta.get("tries", 0) + 1
+        info = inspect_tcp_payload(payload)
+        if not info:
+            return
+        for key in ("host", "fingerprint", "tls_version"):
+            if info.get(key) and not meta.get(key):
+                meta[key] = info[key]
+        self.l7_seen += 1
+        if info.get("host"):
+            # SNI / Host names the destination server -- useful everywhere.
+            self.sink.learn_names({dst: info["host"]}, info.get("kind", "sni"))
 
     def status(self) -> dict:
         return {"interface": self.interface, "packets": self.packets,
-                "active_flows": len(self.table.flows), "error": self.error,
+                "active_flows": len(self.table.flows), "l7_observed": self.l7_seen,
+                "error": self.error,
                 "running": bool(self._thread and self._thread.is_alive())}
 

@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS flows (
     remote_port INTEGER,
     app         TEXT NOT NULL,
     source      TEXT NOT NULL,          -- netflow | ipfix | capture | simulated
-    exporter    TEXT
+    exporter    TEXT,
+    host        TEXT,                   -- SNI / HTTP Host (passive, no decryption)
+    fingerprint TEXT,                   -- JA3 client fingerprint
+    tls_version TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_flows_ts ON flows(ts_end);
 CREATE INDEX IF NOT EXISTS ix_flows_local ON flows(local_ip, ts_end);
@@ -111,7 +114,42 @@ CREATE TABLE IF NOT EXISTS settings (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
 );
+
+-- Decrypted HTTP transactions, ingested from a mitmproxy addon running against
+-- devices the operator controls (TLS interception with an installed CA). See
+-- docs/mitmproxy.md. This table is only populated when that integration is used.
+CREATE TABLE IF NOT EXISTS http_transactions (
+    id          INTEGER PRIMARY KEY,
+    ts          REAL NOT NULL,
+    client_ip   TEXT,
+    client_port INTEGER,
+    method      TEXT,
+    scheme      TEXT,
+    host        TEXT,
+    path        TEXT,
+    status      INTEGER,
+    req_type    TEXT,
+    req_bytes   INTEGER,
+    resp_type   TEXT,
+    resp_bytes  INTEGER,
+    duration_ms REAL,
+    note        TEXT,
+    source      TEXT NOT NULL DEFAULT 'mitmproxy'
+);
+CREATE INDEX IF NOT EXISTS ix_http_ts ON http_transactions(ts);
+CREATE INDEX IF NOT EXISTS ix_http_client ON http_transactions(client_ip, ts);
+CREATE INDEX IF NOT EXISTS ix_http_host ON http_transactions(host, ts);
 """
+
+# Columns added after the first release; applied to existing databases on open.
+_MIGRATIONS = {
+    "flows": {"host": "TEXT", "fingerprint": "TEXT", "tls_version": "TEXT"},
+}
+# Indexes that reference migrated columns -- created after migrations so they
+# also apply to databases upgraded from before those columns existed.
+_POST_MIGRATE = [
+    "CREATE INDEX IF NOT EXISTS ix_flows_host ON flows(host, ts_end)",
+]
 
 
 class Database:
@@ -119,6 +157,7 @@ class Database:
         self.path = str(path)
         self._wconn = self._connect()
         self._wconn.executescript(SCHEMA)
+        self._migrate()
         self._rconn = self._connect()
         self._wlock = threading.Lock()
         self._rlock = threading.Lock()
@@ -130,6 +169,16 @@ class Database:
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
+
+    def _migrate(self) -> None:
+        for table, columns in _MIGRATIONS.items():
+            existing = {r["name"] for r in
+                        self._wconn.execute(f"PRAGMA table_info({table})")}
+            for name, decl in columns.items():
+                if name not in existing:
+                    self._wconn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        for stmt in _POST_MIGRATE:
+            self._wconn.execute(stmt)
 
     def close(self) -> None:
         self._wconn.close()

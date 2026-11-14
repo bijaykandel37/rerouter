@@ -58,6 +58,10 @@ class Config:
     cookie_secure: bool = False
     session_ttl_hours: int = 12
 
+    # Shared secret for the mitmproxy HTTP-transaction ingest endpoint. When
+    # unset the endpoint is disabled. See docs/mitmproxy.md.
+    ingest_token: str | None = None
+
     router: RouterConfig = field(default_factory=RouterConfig)
 
     @property

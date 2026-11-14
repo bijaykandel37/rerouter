@@ -13,13 +13,21 @@ both as a day-to-day admin console and as a data source for network research.
   router logs, ping/traceroute/DNS tools.
 - **Visualize traffic**: per-flow data from NetFlow v5/v9, IPFIX or packet capture,
   shown in several views:
-  - stacked time series grouped by direction, application, device, destination, protocol or port;
+  - stacked time series grouped by direction, application, device, destination, **host (SNI)**, protocol or port;
   - a **device → application → destination Sankey**;
   - a **host communication graph**;
   - a **weekday × hour heatmap**;
   - **flow-size and duration distributions**, to show where the volume sits in the heavy tail;
-  - ranked tables of top devices, destinations, apps, ports and conversations;
+  - ranked tables of top devices, destinations, apps, ports, conversations, **hosts and client fingerprints**;
   - a searchable flow-record table and a live flow stream.
+- **Inspect without decrypting**: the packet-capture collector passively reads the
+  cleartext parts of connections — **TLS SNI** (the destination hostname), **HTTP
+  Host/User-Agent**, offered TLS version/ALPN, and a **JA3 client fingerprint** that
+  identifies the client software — and attaches them to flows. Nothing is decrypted.
+- **Decrypt, for devices you control**: an opt-in [mitmproxy integration](docs/mitmproxy.md)
+  feeds full HTTP request detail from TLS-intercepted devices into a **Decrypted HTTP**
+  view. This works only on devices where you install the proxy CA; see the doc for the
+  consent and scope rules.
 - **Detect anomalies**: inbound port scans, LAN devices scanning the internet
   (e.g. Mirai-style IoT compromise), connections on risky ports (telnet/SMB/RDP…),
   per-device traffic spikes against their own baseline, bulk uploads, new devices,
@@ -139,6 +147,42 @@ Applications are inferred from well-known ports (`https`, `quic`, `dns`, `ssh`, 
 
 ---
 
+## Seeing inside the traffic
+
+Two layers, from least to most invasive. Most monitoring questions are answered by
+the first one.
+
+### Passive inspection (no decryption)
+
+When the **packet-capture** collector is running (`REROUTER_CAPTURE_INTERFACE`,
+on the router or a mirror/SPAN port), rerouter reads the metadata that endpoints
+send in the clear at connection setup and attaches it to flows:
+
+- **TLS SNI** — the hostname the client asked for, so HTTPS flows show their real
+  destination (e.g. `telemetry.vendor.com`) even though the payload stays encrypted;
+- **HTTP Host / User-Agent** for cleartext HTTP;
+- offered **TLS version** and ALPN;
+- a **JA3 client fingerprint** — a hash of the TLS ClientHello that identifies the
+  client software and is stable across destinations, which is excellent for spotting
+  a specific (or rogue) client across the network.
+
+These appear as the **Host (SNI)** column and as group-by / ranking dimensions in the
+Traffic explorer, and as live annotations in the flow stream. Nothing is decrypted:
+TLS application data is never parsed. For most "what is this device doing / talking
+to" questions this is all you need.
+
+### Decryption, per device (mitmproxy)
+
+To read HTTPS payloads you must terminate TLS, which is only possible on a device
+where you install a proxy CA. rerouter ships an opt-in integration for this — a
+mitmproxy addon that forwards decrypted HTTP transactions to a token-authenticated
+ingest endpoint, shown under **Decrypted HTTP**. It applies **only to devices you own
+and administer**, with the knowledge of the people who use them, and it is disabled
+until you set `REROUTER_INGEST_TOKEN`. Full setup, scope and consent guidance:
+**[docs/mitmproxy.md](docs/mitmproxy.md)**.
+
+---
+
 ## Using the data for research
 
 - **Explorer → Export CSV / JSONL** streams every flow that matches the current
@@ -166,7 +210,10 @@ Applications are inferred from well-known ports (`https`, `quic`, `dns`, `ssh`, 
   (topics: `rates`, `flows`, `alert`, `system`).
 - **Flow record columns:** `ts_start, ts_end, src_ip, dst_ip, src_port, dst_port, proto,
   bytes, packets, tcp_flags, direction, local_ip, remote_ip, local_port, remote_port,
-  app, source, exporter`. Exports add `proto_name, local_name, remote_name`.
+  app, source, exporter, host, fingerprint, tls_version`. Exports add
+  `proto_name, local_name, remote_name`. (`host`/`fingerprint`/`tls_version` are
+  populated by the packet-capture collector; `/api/http*` serves the decrypted-HTTP
+  table separately.)
 - Data lives in a single SQLite file (`data/rerouter.db`, WAL mode), so you can also
   open it directly. Retention is configurable (flows: 30 days by default).
 - Analytics attribute each flow to the time bucket containing its end time. With the

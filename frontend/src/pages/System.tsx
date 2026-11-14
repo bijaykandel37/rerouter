@@ -80,6 +80,7 @@ function Collectors({ status, reload }: { status: Status | null; reload: () => v
   const nf = status.collectors.netflow;
   const cap = status.collectors.capture;
   const sink = status.collectors.sink;
+  const http = status.collectors.http_ingest;
   return (
     <div className="stack">
       <div className="grid g3">
@@ -101,9 +102,10 @@ function Collectors({ status, reload }: { status: Status | null; reload: () => v
               <dt>Status</dt><dd>{cap.running ? <span className="badge good">capturing</span> : <span className="badge bad">stopped</span>}</dd>
               <dt>Packets</dt><dd>{num(cap.packets)}</dd>
               <dt>Active flows</dt><dd>{num(cap.active_flows)}</dd>
+              <dt>L7 observed</dt><dd>{num(cap.l7_observed)} <span className="muted small">SNI / HTTP host / JA3</span></dd>
               {cap.error && <><dt>Error</dt><dd className="small">{cap.error}</dd></>}
             </dl>
-          ) : <div className="muted small">Not configured. Set <code>REROUTER_CAPTURE_INTERFACE</code> when rerouter runs on the router or on a mirror port — it also learns hostnames from DNS answers.</div>}
+          ) : <div className="muted small">Not configured. Set <code>REROUTER_CAPTURE_INTERFACE</code> when rerouter runs on the router or on a mirror port. It passively reads TLS SNI, HTTP Host/User-Agent and JA3 client fingerprints (no decryption) and learns hostnames from DNS answers.</div>}
         </Card>
         <Card title="Flow pipeline">
           <dl className="kv">
@@ -132,6 +134,22 @@ function Collectors({ status, reload }: { status: Status | null; reload: () => v
           </div>
         </Card>
       )}
+      <Card title="Decrypted HTTP ingest (mitmproxy)" hint="per-device TLS interception; opt-in">
+        <dl className="kv">
+          <dt>Endpoint</dt><dd className="mono small">POST /api/ingest/http</dd>
+          <dt>Status</dt><dd>{http.enabled
+            ? <span className="badge good">enabled</span>
+            : <span className="badge">disabled — set <code>REROUTER_INGEST_TOKEN</code></span>}</dd>
+          <dt>Received this run</dt><dd>{num(http.received)}</dd>
+          <dt>Last transaction</dt><dd>{http.last_ts ? ago(http.last_ts) : "none"}</dd>
+        </dl>
+        <div className="note" style={{ marginTop: 10 }}>
+          This path decrypts HTTP by intercepting TLS on devices you control and have installed
+          the mitmproxy CA on. Use it only for devices you administer, with the knowledge of the
+          people who use them. Setup: <code>docs/mitmproxy.md</code>. Data appears under
+          <b> Decrypted HTTP</b>.
+        </div>
+      </Card>
     </div>
   );
 }
@@ -167,6 +185,7 @@ function Settings() {
           <div className="form-grid">
             <label className="field">Keep flow records (days)<input type="number" min={1} value={s.flow_retention_days} onChange={(e) => set({ flow_retention_days: n(e.target.value) })} /></label>
             <label className="field">Keep interface samples (days)<input type="number" min={1} value={s.sample_retention_days} onChange={(e) => set({ sample_retention_days: n(e.target.value) })} /></label>
+            <label className="field">Keep decrypted HTTP (days)<input type="number" min={1} value={s.http_retention_days} onChange={(e) => set({ http_retention_days: n(e.target.value) })} /></label>
           </div>
           <h3 style={{ marginTop: 16 }}>Static configuration (file / environment)</h3>
           <pre className="output small">{JSON.stringify(data.data?.static, null, 2)}</pre>

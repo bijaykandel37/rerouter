@@ -21,6 +21,10 @@ netflow_port = 2055
 cookie_secure = false                     # set true when served over HTTPS
 session_ttl_hours = 12
 
+# Shared secret for the decrypted-HTTP ingest endpoint used by the mitmproxy
+# integration (docs/mitmproxy.md). Leave unset to keep that endpoint disabled.
+# ingest_token = "generate-a-long-random-value"
+
 [router]
 driver = "openwrt"     # simulated | openwrt | routeros
 host = "192.168.1.1"

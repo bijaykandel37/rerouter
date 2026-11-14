@@ -212,6 +212,8 @@ class Poller:
                                    (now - s.flow_retention_days * 86400,))
         await self.db.aexecute("DELETE FROM iface_samples WHERE ts < ?",
                                (now - s.sample_retention_days * 86400,))
+        await self.db.aexecute("DELETE FROM http_transactions WHERE ts < ?",
+                               (now - s.http_retention_days * 86400,))
         await self.db.aexecute("DELETE FROM sessions WHERE expires < ?", (now,))
         await self.db.aexecute("DELETE FROM alerts WHERE ts < ?", (now - 180 * 86400,))
         await self.db.aexecute("PRAGMA optimize")

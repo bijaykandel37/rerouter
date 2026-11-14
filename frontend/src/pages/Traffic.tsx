@@ -9,7 +9,8 @@ import { navigate, useRoute } from "../router";
 import { TopTable } from "./Dashboard";
 
 const RANGES = ["5m", "15m", "1h", "6h", "24h", "7d", "30d"] as const;
-const FILTER_KEYS = ["range", "local_ip", "remote_ip", "ip", "app", "direction", "port", "proto"] as const;
+const FILTER_KEYS = ["range", "local_ip", "remote_ip", "ip", "app", "direction", "port", "proto",
+                     "host", "fingerprint", "tls_version"] as const;
 type Tab = "time" | "sankey" | "graph" | "rank" | "patterns" | "flows";
 
 export default function Traffic() {
@@ -53,9 +54,11 @@ export default function Traffic() {
           <option value="">Any protocol</option>
           <option value="6">TCP</option><option value="17">UDP</option><option value="1">ICMP</option><option value="58">ICMPv6</option>
         </select>
-        <DebouncedInput placeholder="Remote IP" value={f.remote_ip} onCommit={(v) => set({ remote_ip: v })} width={140} />
-        <DebouncedInput placeholder="Any IP" value={f.ip} onCommit={(v) => set({ ip: v })} width={120} />
-        <DebouncedInput placeholder="Port" value={f.port} onCommit={(v) => set({ port: v })} width={70} />
+        <DebouncedInput placeholder="Host (SNI)" value={f.host} onCommit={(v) => set({ host: v })} width={150} />
+        <DebouncedInput placeholder="Remote IP" value={f.remote_ip} onCommit={(v) => set({ remote_ip: v })} width={120} />
+        <DebouncedInput placeholder="Any IP" value={f.ip} onCommit={(v) => set({ ip: v })} width={110} />
+        <DebouncedInput placeholder="Port" value={f.port} onCommit={(v) => set({ port: v })} width={66} />
+        {f.fingerprint && <span className="badge" title="JA3 client fingerprint filter">fp:{f.fingerprint.slice(0, 10)}… <button className="ghost small" style={{ padding: 0 }} onClick={() => set({ fingerprint: "" })}>✕</button></span>}
         {active.length > 0 && <button className="ghost" onClick={() => navigate("/traffic", { range: f.range, tab })}>Clear {active.length} filter{active.length > 1 ? "s" : ""}</button>}
         <span className="spacer" />
         <a className="btn" href={`/api/traffic/export${filterQs}&format=csv`} download>Export CSV</a>
@@ -109,7 +112,8 @@ function SummaryTiles({ s }: { s: Summary | null }) {
 
 const GROUPS = [
   { value: "direction", label: "Direction" }, { value: "app", label: "Application" }, { value: "local_ip", label: "Device" },
-  { value: "remote_ip", label: "Destination" }, { value: "proto", label: "Protocol" }, { value: "remote_port", label: "Remote port" },
+  { value: "remote_ip", label: "Destination" }, { value: "host", label: "Host (SNI)" }, { value: "proto", label: "Protocol" },
+  { value: "remote_port", label: "Remote port" },
 ];
 
 function OverTime({ filterQs }: { filterQs: string }) {
@@ -173,8 +177,9 @@ function Graph({ filterQs, onFilter }: { filterQs: string; onFilter: (p: Record<
 }
 
 const RANK_BY = [
-  { value: "local_ip", label: "Devices" }, { value: "remote_ip", label: "Destinations" }, { value: "app", label: "Applications" },
-  { value: "remote_port", label: "Remote ports" }, { value: "conversation", label: "Conversations" }, { value: "proto", label: "Protocols" },
+  { value: "local_ip", label: "Devices" }, { value: "remote_ip", label: "Destinations" }, { value: "host", label: "Hosts (SNI)" },
+  { value: "app", label: "Applications" }, { value: "remote_port", label: "Remote ports" }, { value: "conversation", label: "Conversations" },
+  { value: "proto", label: "Protocols" }, { value: "fingerprint", label: "Client fingerprints" }, { value: "tls_version", label: "TLS versions" },
 ];
 
 function Rankings({ filterQs }: { filterQs: string }) {
@@ -182,7 +187,9 @@ function Rankings({ filterQs }: { filterQs: string }) {
   const rows = useApi<TopRow[]>(`/traffic/top${filterQs}&by=${by}&limit=50`);
   const link = (r: TopRow) => {
     const p: Record<string, string> = by === "local_ip" ? { local_ip: r.key } : by === "remote_ip" ? { remote_ip: r.key } : by === "app" ? { app: r.key }
-      : by === "remote_port" ? { port: r.key } : by === "proto" ? { proto: r.key } : { local_ip: r.local_ip!, remote_ip: r.remote_ip! };
+      : by === "remote_port" ? { port: r.key } : by === "proto" ? { proto: r.key } : by === "host" ? { host: r.key }
+      : by === "fingerprint" ? { fingerprint: r.key } : by === "tls_version" ? { tls_version: r.key }
+      : { local_ip: r.local_ip!, remote_ip: r.remote_ip! };
     const params = new URLSearchParams(location.hash.split("?")[1] ?? "");
     Object.entries(p).forEach(([k, v]) => params.set(k, v));
     params.set("tab", "time");
@@ -255,7 +262,7 @@ function FlowTable({ filterQs, onFilter }: { filterQs: string; onFilter: (p: Rec
       <ErrorBox error={data.error} />
       <div className={`table-wrap ${data.loading ? "loading" : ""}`}>
         <table>
-          <thead><tr>{th("Ended", "ts_end")}<th /><th>Local</th><th>Remote</th><th>App</th><th>Proto</th>{th("Bytes", "bytes", "num")}{th("Packets", "packets", "num")}<th className="num">Duration</th><th>Flags</th><th>Source</th></tr></thead>
+          <thead><tr>{th("Ended", "ts_end")}<th /><th>Local</th><th>Remote</th><th>Host (SNI)</th><th>App</th><th>Proto</th>{th("Bytes", "bytes", "num")}{th("Packets", "packets", "num")}<th className="num">Duration</th><th>Flags</th><th>Source</th></tr></thead>
           <tbody>
             {data.data?.rows.map((r) => (
               <tr key={r.id}>
@@ -263,6 +270,11 @@ function FlowTable({ filterQs, onFilter }: { filterQs: string; onFilter: (p: Rec
                 <td title={r.direction} aria-label={r.direction}>{ARROW[r.direction]}</td>
                 <td className="nowrap">{host(r.local_ip, r.local_name, r.local_port, "local_ip")}</td>
                 <td className="nowrap">{host(r.remote_ip, r.remote_name, r.remote_port, "remote_ip")}</td>
+                <td className="nowrap">{r.host
+                  ? <a href="#" onClick={(e) => { e.preventDefault(); onFilter({ host: r.host! }); }}>{r.host}</a>
+                  : <span className="muted">–</span>}
+                  {r.tls_version && <span className="badge" style={{ marginLeft: 4 }} title={r.fingerprint ? `JA3 ${r.fingerprint}` : undefined}>{r.tls_version.replace("TLS ", "TLS")}</span>}
+                </td>
                 <td><a href="#" onClick={(e) => { e.preventDefault(); onFilter({ app: r.app }); }}>{r.app}</a></td>
                 <td>{r.proto_name}</td>
                 <td className="num">{bytes(r.bytes)}</td>

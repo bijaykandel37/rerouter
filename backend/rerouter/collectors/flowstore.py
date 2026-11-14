@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 INSERT_SQL = (
     "INSERT INTO flows(ts_start, ts_end, src_ip, dst_ip, src_port, dst_port, proto, bytes,"
     " packets, tcp_flags, direction, local_ip, remote_ip, local_port, remote_port, app,"
-    " source, exporter) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    " source, exporter, host, fingerprint, tls_version)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 
 
@@ -39,6 +40,10 @@ class FlowRecord:
     tcp_flags: int = 0
     source: str = "netflow"
     exporter: str | None = None
+    # Passive L7 metadata (packet capture / simulator): never from decryption.
+    host: str | None = None          # SNI or HTTP Host
+    fingerprint: str | None = None   # JA3 client fingerprint
+    tls_version: str | None = None
 
 
 class FlowSink:
@@ -118,10 +123,11 @@ class FlowSink:
         for rec in batch:
             c = self.classifier.classify(rec.src_ip, rec.dst_ip, rec.src_port, rec.dst_port)
             app = classify_app(rec.proto, c.local_port, c.remote_port)
+            host = rec.host or self.names.get(c.remote_ip)
             rows.append((rec.ts_start, rec.ts_end, rec.src_ip, rec.dst_ip, rec.src_port,
                          rec.dst_port, rec.proto, rec.bytes, rec.packets, rec.tcp_flags,
                          c.direction, c.local_ip, c.remote_ip, c.local_port, c.remote_port,
-                         app, rec.source, rec.exporter))
+                         app, rec.source, rec.exporter, host, rec.fingerprint, rec.tls_version))
             self.stats["by_source"][rec.source] += 1
             if self.reverse_dns and c.direction in ("upload", "download"):
                 self._queue_ptr(c.remote_ip)
@@ -132,7 +138,8 @@ class FlowSink:
                     "proto": proto_name(rec.proto), "bytes": rec.bytes,
                     "packets": rec.packets, "direction": c.direction, "app": app,
                     "local": c.local_ip, "remote": c.remote_ip,
-                    "remote_name": self.names.get(c.remote_ip),
+                    "remote_name": self.names.get(c.remote_ip), "host": host,
+                    "fingerprint": rec.fingerprint, "tls_version": rec.tls_version,
                 })
         await self.db.aexecutemany(INSERT_SQL, rows)
         self.stats["stored"] += len(rows)

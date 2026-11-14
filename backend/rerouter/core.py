@@ -43,6 +43,7 @@ class Platform:
         self.capture = (PacketCapture(self.sink, cfg.capture_interface)
                         if cfg.capture_interface else None)
         self.auth = Auth(self.db, cfg.session_ttl_hours)
+        self.ingest = {"received": 0, "last_ts": 0.0}  # mitmproxy HTTP ingest counters
         self._tasks: list[asyncio.Task] = []
         self.settings.on_change(self._settings_changed)
 
@@ -118,6 +119,9 @@ class Platform:
                 "capture": self.capture.status() if self.capture else None,
                 "sink": {k: (dict(v) if k == "by_source" else v)
                          for k, v in self.sink.stats.items()},
+                "http_ingest": {"enabled": bool(self.cfg.ingest_token),
+                                "received": self.ingest["received"],
+                                "last_ts": self.ingest["last_ts"]},
             },
             "live_subscribers": self.hub.subscriber_count,
         }

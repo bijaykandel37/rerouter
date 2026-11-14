@@ -31,6 +31,7 @@ class RuntimeSettings(BaseModel):
     router_ips: list[str] = Field(default_factory=list)
     flow_retention_days: int = Field(default=30, ge=1, le=3650)
     sample_retention_days: int = Field(default=90, ge=1, le=3650)
+    http_retention_days: int = Field(default=14, ge=1, le=3650)
     reverse_dns: bool = False
     alerts: AlertThresholds = Field(default_factory=AlertThresholds)
 

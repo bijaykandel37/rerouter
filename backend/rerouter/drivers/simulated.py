@@ -10,6 +10,7 @@ dashboard and alert can be exercised without real hardware.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import math
@@ -29,6 +30,7 @@ LAN_PREFIX = "192.168.1."
 ROUTER_LAN = "192.168.1.1"
 ROUTER_WAN = "203.0.113.45"
 WAN_GW = "203.0.113.1"
+_TLS_PORTS = {443, 8443, 8883, 993, 995, 465, 853, 5223, 4070, 8801}
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,7 @@ class TrafficSimulator:
         self.sessions: list[Session] = []
         self.pending: list[FlowRecord] = []
         self.anomaly: dict | None = None
+        self._fingerprints: dict[str, str] = {}
 
     # A tick advances the world by dt seconds ending at `now`.
     def tick(self, now: float, dt: float) -> list[FlowRecord]:
@@ -227,15 +230,27 @@ class TrafficSimulator:
     def _report(self, s: Session, now: float) -> list[FlowRecord]:
         dev = s.device
         start = max(s.started, s.last_report)
+        tls = s.remote_port in _TLS_PORTS or (s.proto == 17 and s.remote_port == 443)
+        meta = dict(host=s.service.name,
+                    fingerprint=self._fingerprint(dev) if tls else None,
+                    tls_version="TLS 1.3" if tls else None)
         out = [
             self._flow(start, now, s.remote_ip, dev.ip, s.remote_port, s.local_port, s.proto,
-                       s.down, s.down_pkts),
+                       s.down, s.down_pkts, **meta),
             self._flow(start, now, dev.ip, s.remote_ip, s.local_port, s.remote_port, s.proto,
-                       s.up, s.up_pkts),
+                       s.up, s.up_pkts, **meta),
         ]
         s.down = s.up = s.down_pkts = s.up_pkts = 0
         s.last_report = now
         return [f for f in out if f.bytes > 0]
+
+    def _fingerprint(self, dev: SimDevice) -> str:
+        """A stable, device-specific JA3-style client fingerprint."""
+        fp = self._fingerprints.get(dev.mac)
+        if fp is None:
+            fp = hashlib.md5(dev.mac.encode(), usedforsecurity=False).hexdigest()
+            self._fingerprints[dev.mac] = fp
+        return fp
 
     def _dns_lookup(self, dev: SimDevice, svc: Service, now: float) -> list[FlowRecord]:
         rng = self.rng
@@ -288,10 +303,12 @@ class TrafficSimulator:
         return out
 
     @staticmethod
-    def _flow(start, end, src, dst, sport, dport, proto, nbytes, pkts=None, flags=0x18):
+    def _flow(start, end, src, dst, sport, dport, proto, nbytes, pkts=None, flags=0x18,
+              host=None, fingerprint=None, tls_version=None):
         return FlowRecord(start, end, src, dst, sport, dport, proto, nbytes,
                           pkts if pkts is not None else max(1, nbytes // 1200),
-                          flags if proto == 6 else 0, source="simulated", exporter="simulator")
+                          flags if proto == 6 else 0, source="simulated", exporter="simulator",
+                          host=host, fingerprint=fingerprint, tls_version=tls_version)
 
 
 def _curve_at(curve: list[float], hour: float) -> float:
