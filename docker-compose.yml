@@ -4,7 +4,7 @@ services:
     image: rerouter:latest
     restart: unless-stopped
     ports:
-      - "8080:8080"       # web UI + API
+      - "8010:8080"       # web UI + API
       - "2055:2055/udp"   # NetFlow v5/v9 + IPFIX collector
     volumes:
       - rerouter-data:/data
