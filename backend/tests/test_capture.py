@@ -3,7 +3,7 @@ import struct
 
 from rerouter.collectors.capture import (FlowTable, PacketCapture, parse_dns_answers,
                                          parse_packet)
-from tests.test_dpi import build_client_hello
+from test_dpi import build_client_hello
 
 
 def eth_ipv4_udp(src, dst, sport, dport, payload=b""):
